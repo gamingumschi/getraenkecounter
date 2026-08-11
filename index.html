@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Getränkecounter</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #1C1B18;
+    --panel: #26241f;
+    --border: #3a372f;
+    --chalk: #EDE6D6;
+    --muted: #A69C8A;
+    --dim: #6b6658;
+    --amber: #C98A3E;
+    --amber-dark: #b57933;
+    --burgundy: #7B2D3E;
+    --red: #c0392b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--chalk);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    padding: 32px 16px;
+    display: flex;
+    justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 400px; }
+
+  .eyebrow {
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  h1 {
+    text-align: center;
+    font-family: Georgia, serif;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 0 24px;
+  }
+
+  .hero {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  }
+  .tally {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 12px;
+    justify-content: center;
+    min-height: 32px;
+    margin-bottom: 24px;
+  }
+  .tally-group { position: relative; display: flex; align-items: flex-end; }
+  .tally-mark {
+    width: 3px; height: 24px;
+    background: var(--chalk);
+    border-radius: 2px;
+    margin: 0 2px;
+  }
+  .tally-slash {
+    position: absolute; width: 36px; height: 3px;
+    background: var(--amber);
+    border-radius: 2px;
+    top: 40%; left: -2px;
+    transform: rotate(-14deg);
+  }
+  .total { text-align: center; }
+  .total-num {
+    font-family: Georgia, serif;
+    font-size: 48px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .total-label {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .drink-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: left;
+    color: var(--chalk);
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .drink-btn:active { background: #2e2c25; transform: scale(0.97); }
+  .drink-icon {
+    width: 32px; height: 32px;
+    border-radius: 999px;
+    background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--amber);
+    font-size: 16px;
+  }
+  .drink-name { font-size: 14px; font-weight: 600; line-height: 1.2; }
+  .drink-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .add-toggle {
+    width: 100%;
+    background: transparent;
+    border: 1px dashed #4a4638;
+    border-radius: 12px;
+    padding: 12px;
+    color: var(--muted);
+    font-size: 14px;
+    font-family: inherit;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-bottom: 12px;
+    cursor: pointer;
+  }
+  .add-toggle:active { background: var(--panel); }
+
+  .add-form {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .add-form.open { display: flex; }
+  .add-form input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--chalk);
+    font-family: inherit;
+    width: 100%;
+  }
+  .add-form input::placeholder { color: var(--dim); }
+  .add-form input:focus { outline: none; border-color: var(--amber); }
+  .row2 { display: flex; gap: 12px; }
+  .row2 > div { flex: 1; }
+  .field-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--muted); display: block; margin-bottom: 4px;
+  }
+  .preview { font-size: 11px; color: var(--muted); }
+  .submit-btn {
+    background: var(--amber);
+    color: var(--bg);
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .submit-btn:active { background: var(--amber-dark); }
+
+  .history-toggle {
+    width: 100%;
+    display: flex; align-items: center; justify-content: space-between;
+    background: none; border: none;
+    border-top: 1px solid var(--border);
+    padding: 12px 0;
+    color: var(--muted);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .chevron { transition: transform 0.2s; }
+  .chevron.open { transform: rotate(180deg); }
+
+  .history { display: none; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .history.open { display: flex; }
+  .history-empty { text-align: center; font-size: 14px; color: var(--dim); padding: 24px 0; }
+  .history-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .history-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .history-icon {
+    width: 28px; height: 28px; border-radius: 999px;
+    background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--amber); font-size: 13px; flex-shrink: 0;
+  }
+  .history-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-sub { font-size: 11px; color: var(--muted); }
+  .history-del {
+    background: none; border: none; color: var(--dim);
+    padding: 4px; cursor: pointer; flex-shrink: 0; font-size: 16px;
+  }
+  .history-del:active { color: var(--red); }
+
+  .reset-btn {
+    width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .reset-btn:active { background: var(--panel); }
+  .reset-btn.confirm { background: var(--burgundy); border-color: var(--burgundy); color: var(--chalk); }
+
+  .footnote { text-align: center; font-size: 10px; color: var(--dim); margin-top: 24px; letter-spacing: 0.02em; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--chalk); color: var(--bg);
+    font-size: 14px; font-weight: 500;
+    padding: 10px 18px; border-radius: 999px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Strichliste</div>
+  <h1>Getränkecounter</h1>
+
+  <div class="hero">
+    <div class="tally" id="tally"></div>
+    <div class="total">
+      <div class="total-num" id="totalNum">0</div>
+      <div class="total-label">Standardgläser</div>
+    </div>
+  </div>
+
+  <div class="grid" id="predefinedGrid"></div>
+
+  <button class="add-toggle" id="addToggle">+ Eigenes Getränk hinzufügen</button>
+
+  <form class="add-form" id="addForm">
+    <input type="text" id="customName" placeholder="Name (z. B. Aperol Spritz)" required>
+    <div class="row2">
+      <div>
+        <label class="field-label">Menge (ml)</label>
+        <input type="text" inputmode="decimal" id="customMl" placeholder="200" required>
+      </div>
+      <div>
+        <label class="field-label">Vol %</label>
+        <input type="text" inputmode="decimal" id="customVol" placeholder="11" required>
+      </div>
+    </div>
+    <div class="preview" id="customPreview"></div>
+    <button type="submit" class="submit-btn">Hinzufügen</button>
+  </form>
+
+  <button class="history-toggle" id="historyToggle">
+    <span id="historyCount">Verlauf (0)</span>
+    <span class="chevron" id="historyChevron">▾</span>
+  </button>
+  <div class="history" id="history"></div>
+
+  <button class="reset-btn" id="resetBtn">↺ Counter zurücksetzen</button>
+
+  <div class="footnote">Formel: ml × (Vol% / 100) × 0,8 / 10g</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STORAGE_KEY = "getraenkecounter-entries";
+
+const PREDEFINED = [
+  { id: "bier500", name: "Bier 0,5l", ml: 500, vol: 5, icon: "🍺" },
+  { id: "bier330", name: "Bier 0,33l", ml: 330, vol: 5, icon: "🍺" },
+  { id: "wein125", name: "Wein", ml: 125, vol: 12, icon: "🍷" },
+  { id: "spritzer250", name: "Weinspritzer", ml: 250, vol: 6, icon: "🥂" },
+];
+
+function toStandardglas(ml, vol) {
+  return (ml * (vol / 100) * 0.8) / 10;
+}
+function fmt(n) {
+  return n.toLocaleString("de-AT", { maximumFractionDigits: 2 });
+}
+
+let entries = [];
+try {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) entries = JSON.parse(raw);
+} catch (e) { entries = []; }
+
+let historyOpen = false;
+let confirmReset = false;
+let resetTimer = null;
+let toastTimer = null;
+
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch (e) {}
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+function addEntry(name, ml, vol, icon) {
+  const sg = toStandardglas(ml, vol);
+  entries.unshift({
+    id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+    name, ml, vol, icon: icon || "🍹", sg, ts: Date.now(),
+  });
+  save();
+  render();
+  showToast(name + " hinzugefügt");
+}
+
+function removeEntry(id) {
+  entries = entries.filter(e => e.id !== id);
+  save();
+  render();
+}
+
+function renderTally(count) {
+  const el = document.getElementById("tally");
+  el.innerHTML = "";
+  const fullGroups = Math.floor(count / 5);
+  const rest = count % 5;
+  const groups = Array(fullGroups).fill(5).concat(rest > 0 ? [rest] : []);
+  if (groups.length === 0) groups.push(0);
+
+  groups.forEach(g => {
+    const group = document.createElement("div");
+    group.className = "tally-group";
+    group.style.minWidth = (g === 5 ? 34 : g * 7) + "px";
+    for (let i = 0; i < g; i++) {
+      const mark = document.createElement("div");
+      mark.className = "tally-mark";
+      mark.style.transform = "rotate(" + ((i - 2) * 3) + "deg)";
+      group.appendChild(mark);
+    }
+    if (g === 5) {
+      const slash = document.createElement("div");
+      slash.className = "tally-slash";
+      group.appendChild(slash);
+    }
+    el.appendChild(group);
+  });
+}
+
+function render() {
+  const total = entries.reduce((s, e) => s + e.sg, 0);
+  document.getElementById("totalNum").textContent = fmt(Math.round(total * 10) / 10);
+  renderTally(Math.round(total));
+
+  document.getElementById("historyCount").textContent = "Verlauf (" + entries.length + ")";
+
+  const hist = document.getElementById("history");
+  hist.innerHTML = "";
+  if (entries.length === 0) {
+    hist.innerHTML = '<div class="history-empty">Noch nichts eingetragen.</div>';
+  } else {
+    entries.forEach(e => {
+      const item = document.createElement("div");
+      item.className = "history-item";
+      item.innerHTML = `
+        <div class="history-left">
+          <div class="history-icon">${e.icon}</div>
+          <div>
+            <div class="history-name">${escapeHtml(e.name)}</div>
+            <div class="history-sub">${e.ml}ml · ${e.vol}% · ${fmt(e.sg)} SG</div>
+          </div>
+        </div>
+        <button class="history-del" data-id="${e.id}">✕</button>
+      `;
+      hist.appendChild(item);
+    });
+    hist.querySelectorAll(".history-del").forEach(btn => {
+      btn.addEventListener("click", () => removeEntry(btn.dataset.id));
+    });
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Predefined grid
+const grid = document.getElementById("predefinedGrid");
+PREDEFINED.forEach(d => {
+  const btn = document.createElement("button");
+  btn.className = "drink-btn";
+  btn.innerHTML = `
+    <div class="drink-icon">${d.icon}</div>
+    <div>
+      <div class="drink-name">${d.name}</div>
+      <div class="drink-sub">${d.vol}% · ${fmt(toStandardglas(d.ml, d.vol))} SG</div>
+    </div>
+  `;
+  btn.addEventListener("click", () => addEntry(d.name, d.ml, d.vol, d.icon));
+  grid.appendChild(btn);
+});
+
+// Add form toggle
+document.getElementById("addToggle").addEventListener("click", () => {
+  document.getElementById("addForm").classList.toggle("open");
+});
+
+function updatePreview() {
+  const ml = parseFloat(document.getElementById("customMl").value.replace(",", "."));
+  const vol = parseFloat(document.getElementById("customVol").value.replace(",", "."));
+  const preview = document.getElementById("customPreview");
+  if (ml > 0 && vol >= 0 && !isNaN(ml) && !isNaN(vol)) {
+    preview.textContent = "≈ " + fmt(toStandardglas(ml, vol)) + " Standardgläser";
+  } else {
+    preview.textContent = "";
+  }
+}
+document.getElementById("customMl").addEventListener("input", updatePreview);
+document.getElementById("customVol").addEventListener("input", updatePreview);
+
+document.getElementById("addForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = document.getElementById("customName").value.trim();
+  const ml = parseFloat(document.getElementById("customMl").value.replace(",", "."));
+  const vol = parseFloat(document.getElementById("customVol").value.replace(",", "."));
+  if (!name || !ml || ml <= 0 || isNaN(vol) || vol < 0) return;
+  addEntry(name, ml, vol, "🍹");
+  document.getElementById("customName").value = "";
+  document.getElementById("customMl").value = "";
+  document.getElementById("customVol").value = "";
+  document.getElementById("customPreview").textContent = "";
+  document.getElementById("addForm").classList.remove("open");
+});
+
+// History toggle
+document.getElementById("historyToggle").addEventListener("click", () => {
+  historyOpen = !historyOpen;
+  document.getElementById("history").classList.toggle("open", historyOpen);
+  document.getElementById("historyChevron").classList.toggle("open", historyOpen);
+});
+
+// Reset
+document.getElementById("resetBtn").addEventListener("click", () => {
+  const btn = document.getElementById("resetBtn");
+  if (!confirmReset) {
+    confirmReset = true;
+    btn.classList.add("confirm");
+    btn.textContent = "Wirklich zurücksetzen? Nochmal tippen";
+    resetTimer = setTimeout(() => {
+      confirmReset = false;
+      btn.classList.remove("confirm");
+      btn.innerHTML = "↺ Counter zurücksetzen";
+    }, 3000);
+    return;
+  }
+  entries = [];
+  save();
+  render();
+  confirmReset = false;
+  clearTimeout(resetTimer);
+  btn.classList.remove("confirm");
+  btn.innerHTML = "↺ Counter zurücksetzen";
+  showToast("Zurückgesetzt");
+});
+
+render();
+</script>
+</body>
+</html>
