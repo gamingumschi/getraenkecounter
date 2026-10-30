@@ -242,6 +242,32 @@
 
   .footnote { text-align: center; font-size: 10px; color: var(--dim); margin-top: 24px; letter-spacing: 0.02em; }
 
+  .session-bar { text-align: center; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; font-variant-numeric: tabular-nums; }
+  .session-bar.live { color: var(--amber); }
+  .session-btn {
+    width: 100%; border: none; border-radius: 12px; padding: 16px;
+    font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer;
+    background: var(--amber); color: var(--bg); margin-bottom: 20px;
+  }
+  .session-btn:active { background: var(--amber-dark); }
+  .session-btn.stop { background: transparent; color: var(--chalk); border: 1px solid var(--burgundy); }
+  .session-btn.stop:active { background: var(--panel); }
+  .session-btn.stop.confirm { background: var(--burgundy); color: var(--chalk); }
+  .drink-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .drink-btn:disabled:active { transform: none; background: var(--panel); }
+  .hint { text-align: center; font-size: 12px; color: var(--dim); margin: -8px 0 16px; }
+  .session-item { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0; }
+  .session-item summary { list-style: none; cursor: pointer; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .session-item summary::-webkit-details-marker { display: none; }
+  .session-title { font-size: 14px; font-weight: 500; }
+  .session-sub { font-size: 11px; color: var(--muted); }
+  .session-sg { font-family: Georgia, serif; font-size: 20px; font-weight: 700; white-space: nowrap; }
+  .session-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .session-line { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+  .session-del { align-self: flex-end; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 6px 10px; font-size: 12px; font-family: inherit; cursor: pointer; margin-top: 4px; }
+  .session-del:active { color: var(--red); }
+
+
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
     background: var(--chalk); color: var(--bg);
@@ -260,6 +286,9 @@
   <div class="eyebrow">Strichliste</div>
   <h1>Getränkecounter</h1>
 
+  <div class="session-bar" id="sessionBar">Keine aktive Session</div>
+  <button class="session-btn" id="sessionBtn">▶ Session starten</button>
+
   <div class="hero">
     <div class="tally" id="tally"></div>
     <div class="total">
@@ -268,6 +297,7 @@
     </div>
   </div>
 
+  <div class="hint" id="hint">Starte eine Session, um Getränke einzutragen.</div>
   <div class="grid" id="predefinedGrid"></div>
 
   <button class="add-toggle" id="addToggle">+ Eigenes Getränk hinzufügen</button>
@@ -294,7 +324,13 @@
   </button>
   <div class="history" id="history"></div>
 
-  <button class="reset-btn" id="resetBtn">↺ Counter zurücksetzen</button>
+  <button class="history-toggle" id="sessionsToggle">
+    <span id="sessionsCount">Frühere Sessions (0)</span>
+    <span class="chevron" id="sessionsChevron">▾</span>
+  </button>
+  <div class="history" id="sessions"></div>
+
+  <button class="reset-btn" id="resetBtn">🗑 Alle Sessions löschen</button>
 
   <div class="footnote">Formel: ml × (Vol% / 100) × 0,8 / 10g</div>
 </div>
@@ -302,7 +338,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const STORAGE_KEY = "getraenkecounter-entries";
+const STORAGE_KEY = "getraenkecounter-sessions";
+const OLD_KEY = "getraenkecounter-entries";
 
 const PREDEFINED = [
   { id: "bier500", name: "Bier 0,5l", ml: 500, vol: 5, icon: "🍺" },
@@ -318,21 +355,63 @@ function toStandardglas(ml, vol) {
 function fmt(n) {
   return n.toLocaleString("de-AT", { maximumFractionDigits: 2 });
 }
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+function fmtDuration(ms) {
+  const totalMin = Math.max(0, Math.floor(ms / 60000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h + ":" + String(m).padStart(2, "0") + " h";
+}
+function fmtDate(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString("de-AT", { weekday: "short", day: "2-digit", month: "2-digit" }) +
+         ", " + d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
+}
+function sessionTotal(sess) {
+  return sess.entries.reduce((sum, e) => sum + e.sg, 0);
+}
 
-let entries = [];
-try {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw) entries = JSON.parse(raw);
-} catch (e) { entries = []; }
+// ---------- State ----------
+let sessions = []; // newest first; active session = one without "end"
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { sessions = JSON.parse(raw); return; }
+  } catch (e) {}
+  // Migration: Einträge aus der alten Version als eigene Session übernehmen
+  try {
+    const old = JSON.parse(localStorage.getItem(OLD_KEY) || "[]");
+    if (Array.isArray(old) && old.length > 0) {
+      const times = old.map(e => e.ts || Date.now());
+      sessions = [{
+        id: "old-" + Date.now(),
+        start: Math.min(...times),
+        end: Math.max(...times),
+        entries: old,
+      }];
+      save();
+    }
+  } catch (e) { sessions = []; }
+}
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch (e) {}
+}
+function activeSession() {
+  return sessions.find(s => !s.end) || null;
+}
+
+load();
 
 let historyOpen = false;
-let confirmReset = false;
-let resetTimer = null;
+let sessionsOpen = false;
+let confirmStop = false, stopTimer = null;
+let confirmReset = false, resetTimer = null;
 let toastTimer = null;
-
-function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch (e) {}
-}
 
 function showToast(msg) {
   const t = document.getElementById("toast");
@@ -342,23 +421,65 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
 }
 
+// ---------- Session-Steuerung ----------
+function startSession() {
+  if (activeSession()) return;
+  sessions.unshift({ id: "s-" + Date.now(), start: Date.now(), end: null, entries: [] });
+  save();
+  render();
+  showToast("Session gestartet");
+}
+function stopSession() {
+  const s = activeSession();
+  if (!s) return;
+  s.end = Date.now();
+  save();
+  render();
+  showToast("Session beendet");
+}
+
+document.getElementById("sessionBtn").addEventListener("click", () => {
+  const btn = document.getElementById("sessionBtn");
+  if (!activeSession()) { startSession(); return; }
+  if (!confirmStop) {
+    confirmStop = true;
+    btn.classList.add("confirm");
+    btn.textContent = "Wirklich beenden? Nochmal tippen";
+    stopTimer = setTimeout(() => { confirmStop = false; render(); }, 3000);
+    return;
+  }
+  clearTimeout(stopTimer);
+  confirmStop = false;
+  stopSession();
+});
+
+// ---------- Einträge ----------
 function addEntry(name, ml, vol, icon) {
-  const sg = toStandardglas(ml, vol);
-  entries.unshift({
+  const s = activeSession();
+  if (!s) { showToast("Starte zuerst eine Session"); return false; }
+  s.entries.unshift({
     id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
-    name, ml, vol, icon: icon || "🍹", sg, ts: Date.now(),
+    name, ml, vol, icon: icon || "🍹", sg: toStandardglas(ml, vol), ts: Date.now(),
   });
   save();
   render();
   showToast(name + " hinzugefügt");
+  return true;
 }
-
 function removeEntry(id) {
-  entries = entries.filter(e => e.id !== id);
+  const s = activeSession();
+  if (!s) return;
+  s.entries = s.entries.filter(e => e.id !== id);
+  save();
+  render();
+}
+function removeSession(id) {
+  sessions = sessions.filter(s => s.id !== id);
   save();
   render();
 }
 
+// ---------- Rendering ----------
 function renderTally(count) {
   const el = document.getElementById("tally");
   el.innerHTML = "";
@@ -386,13 +507,44 @@ function renderTally(count) {
   });
 }
 
+function updateElapsed() {
+  const s = activeSession();
+  const bar = document.getElementById("sessionBar");
+  if (s) {
+    bar.textContent = "Session läuft · " + fmtDuration(Date.now() - s.start);
+    bar.classList.add("live");
+  } else {
+    bar.textContent = "Keine aktive Session";
+    bar.classList.remove("live");
+  }
+}
+
 function render() {
-  const total = entries.reduce((s, e) => s + e.sg, 0);
+  const active = activeSession();
+  const entries = active ? active.entries : [];
+
+  // Hero
+  const total = entries.reduce((sum, e) => sum + e.sg, 0);
   document.getElementById("totalNum").textContent = fmt(Math.round(total * 10) / 10);
   renderTally(Math.round(total));
+  updateElapsed();
 
+  // Start/Stop-Button
+  const btn = document.getElementById("sessionBtn");
+  if (active) {
+    btn.className = "session-btn stop" + (confirmStop ? " confirm" : "");
+    btn.textContent = confirmStop ? "Wirklich beenden? Nochmal tippen" : "■ Session beenden";
+  } else {
+    btn.className = "session-btn";
+    btn.textContent = "▶ Session starten";
+  }
+
+  // Getränke-Buttons nur bei aktiver Session
+  document.querySelectorAll(".drink-btn").forEach(b => { b.disabled = !active; });
+  document.getElementById("hint").style.display = active ? "none" : "block";
+
+  // Verlauf der aktuellen Session
   document.getElementById("historyCount").textContent = "Verlauf (" + entries.length + ")";
-
   const hist = document.getElementById("history");
   hist.innerHTML = "";
   if (entries.length === 0) {
@@ -413,19 +565,49 @@ function render() {
       `;
       hist.appendChild(item);
     });
-    hist.querySelectorAll(".history-del").forEach(btn => {
-      btn.addEventListener("click", () => removeEntry(btn.dataset.id));
+    hist.querySelectorAll(".history-del").forEach(b => {
+      b.addEventListener("click", () => removeEntry(b.dataset.id));
+    });
+  }
+
+  // Frühere Sessions
+  const past = sessions.filter(s => s.end);
+  document.getElementById("sessionsCount").textContent = "Frühere Sessions (" + past.length + ")";
+  const list = document.getElementById("sessions");
+  list.innerHTML = "";
+  if (past.length === 0) {
+    list.innerHTML = '<div class="history-empty">Noch keine beendete Session.</div>';
+  } else {
+    past.forEach(sess => {
+      const det = document.createElement("details");
+      det.className = "session-item";
+      const lines = sess.entries.length === 0
+        ? '<div class="session-line">Keine Getränke eingetragen</div>'
+        : sess.entries.slice().reverse().map(e =>
+            `<div class="session-line"><span>${e.icon} ${escapeHtml(e.name)}</span><span>${fmt(e.sg)} SG</span></div>`
+          ).join("");
+      det.innerHTML = `
+        <summary>
+          <div>
+            <div class="session-title">${fmtDate(sess.start)}</div>
+            <div class="session-sub">${fmtDuration(sess.end - sess.start)} · ${sess.entries.length} Getränke</div>
+          </div>
+          <div class="session-sg">${fmt(Math.round(sessionTotal(sess) * 10) / 10)} <span class="session-sub">SG</span></div>
+        </summary>
+        <div class="session-body">
+          ${lines}
+          <button class="session-del" data-id="${sess.id}">Session löschen</button>
+        </div>
+      `;
+      list.appendChild(det);
+    });
+    list.querySelectorAll(".session-del").forEach(b => {
+      b.addEventListener("click", () => removeSession(b.dataset.id));
     });
   }
 }
 
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-// Predefined grid
+// ---------- Vordefinierte Getränke ----------
 const grid = document.getElementById("predefinedGrid");
 PREDEFINED.forEach(d => {
   const btn = document.createElement("button");
@@ -441,7 +623,7 @@ PREDEFINED.forEach(d => {
   grid.appendChild(btn);
 });
 
-// Add form toggle
+// ---------- Eigenes Getränk ----------
 document.getElementById("addToggle").addEventListener("click", () => {
   document.getElementById("addForm").classList.toggle("open");
 });
@@ -465,7 +647,7 @@ document.getElementById("addForm").addEventListener("submit", (e) => {
   const ml = parseFloat(document.getElementById("customMl").value.replace(",", "."));
   const vol = parseFloat(document.getElementById("customVol").value.replace(",", "."));
   if (!name || !ml || ml <= 0 || isNaN(vol) || vol < 0) return;
-  addEntry(name, ml, vol, "🍹");
+  if (!addEntry(name, ml, vol, "🍹")) return;
   document.getElementById("customName").value = "";
   document.getElementById("customMl").value = "";
   document.getElementById("customVol").value = "";
@@ -473,38 +655,44 @@ document.getElementById("addForm").addEventListener("submit", (e) => {
   document.getElementById("addForm").classList.remove("open");
 });
 
-// History toggle
+// ---------- Auf-/Zuklappen ----------
 document.getElementById("historyToggle").addEventListener("click", () => {
   historyOpen = !historyOpen;
   document.getElementById("history").classList.toggle("open", historyOpen);
   document.getElementById("historyChevron").classList.toggle("open", historyOpen);
 });
+document.getElementById("sessionsToggle").addEventListener("click", () => {
+  sessionsOpen = !sessionsOpen;
+  document.getElementById("sessions").classList.toggle("open", sessionsOpen);
+  document.getElementById("sessionsChevron").classList.toggle("open", sessionsOpen);
+});
 
-// Reset
+// ---------- Alles löschen ----------
 document.getElementById("resetBtn").addEventListener("click", () => {
   const btn = document.getElementById("resetBtn");
   if (!confirmReset) {
     confirmReset = true;
     btn.classList.add("confirm");
-    btn.textContent = "Wirklich zurücksetzen? Nochmal tippen";
+    btn.textContent = "Wirklich ALLES löschen? Nochmal tippen";
     resetTimer = setTimeout(() => {
       confirmReset = false;
       btn.classList.remove("confirm");
-      btn.innerHTML = "↺ Counter zurücksetzen";
+      btn.textContent = "🗑 Alle Sessions löschen";
     }, 3000);
     return;
   }
-  entries = [];
+  sessions = [];
   save();
-  render();
   confirmReset = false;
   clearTimeout(resetTimer);
   btn.classList.remove("confirm");
-  btn.innerHTML = "↺ Counter zurücksetzen";
-  showToast("Zurückgesetzt");
+  btn.textContent = "🗑 Alle Sessions löschen";
+  render();
+  showToast("Alles gelöscht");
 });
 
 render();
+setInterval(updateElapsed, 30000);
 </script>
 </body>
 </html>
